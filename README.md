@@ -1,33 +1,32 @@
-# 🃏 UNO MP - Real-time Multiplayer UNO
+# 🃏 UNO MP - Self-Hosted Multiplayer UNO
 
-A high-performance, real-time multiplayer UNO game designed for both remote play and physical gatherings. Play using your mobile device as your private "hand" while optionally using a central shared screen (Console Mode) for a cinema-like game board experience.
+A real-time multiplayer UNO game designed for both remote play and physical gatherings. This version is optimized for self-hosting using Docker Compose, Socket.io, and a local Redis instance.
 
 ## 🚀 Key Features
 
 - **📱 Mobile Hand View**: Each player sees only their cards on their personal device.
-- **📺 Optional Console Mode**: Transform any large screen (TV, Tablet, PC) into a shared game board that tracks the discard pile, current color, and turn order.
-- **⚡ Real-Time Sync**: Instant card plays and turn updates via Pusher WebSockets.
-- **🌍 Hybrid Play**: Works perfectly for friends in the same room OR friends scattered across the globe.
-- **🎨 Visual Fidelity**: High-quality card assets with smooth CSS animations and responsive Tailwind-based design.
-- **🛡️ Server-Authoritative**: Game logic and state are managed on the server (Vercel KV/Redis) to prevent cheating and ensure consistency.
+- **📺 Optional Console Mode**: Shared game board for large screens.
+- **⚡ Real-Time Sync**: Bi-directional communication via Socket.io WebSockets.
+- **🐳 Dockerized**: Fully containerized for easy self-hosting.
+- **💾 Local State**: Persistent game state using a local Redis container.
+- **🛡️ Server-Authoritative**: All game logic runs on the Node.js server.
 
 ## 🛠️ Tech Stack
 
-- **Framework**: [Next.js 15](https://nextjs.org/) (App Router)
-- **Real-time**: [Pusher Channels](https://pusher.com/channels)
-- **State Storage**: [Vercel KV](https://vercel.com/storage/kv) (Redis)
-- **Styling**: [Tailwind CSS 4](https://tailwindcss.com/)
-- **Language**: TypeScript
+- **Framework**: [Next.js 14/15](https://nextjs.org/)
+- **Server**: Custom Node.js/Express server.
+- **Real-time**: [Socket.io](https://socket.io/)
+- **State Storage**: [Redis](https://redis.io/)
+- **Styling**: Tailwind CSS
+- **Orchestration**: Docker Compose
 
 ## 🏁 Getting Started
 
 ### Prerequisites
 
-- Node.js 20+
-- A Pusher account (free tier is enough)
-- A Vercel KV store (free tier is enough)
+- [Docker](https://www.docker.com/) & [Docker Compose](https://docs.docker.com/compose/)
 
-### Local Development
+### Running with Docker Compose
 
 1. **Clone the repo**:
    ```bash
@@ -35,53 +34,45 @@ A high-performance, real-time multiplayer UNO game designed for both remote play
    cd uno-mp
    ```
 
-2. **Install dependencies**:
+2. **Start the containers**:
+   ```bash
+   docker-compose up --build
+   ```
+
+3. **Play!**
+   - Access the app at `http://localhost:3000`.
+   - Create a room on one device, join from others.
+   - For Console Mode, visit `http://localhost:3000/console/[ROOM_ID]`.
+
+### Local Development (without Docker)
+
+If you have Redis running locally:
+
+1. **Install dependencies**:
    ```bash
    npm install
    ```
 
-3. **Configure Environment Variables**:
-   Copy `.env.example` to `.env.local`:
+2. **Run build**:
    ```bash
-   cp .env.example .env.local
-   ```
-   Fill in your credentials:
-   - `NEXT_PUBLIC_PUSHER_KEY`
-   - `NEXT_PUBLIC_PUSHER_CLUSTER`
-   - `PUSHER_APP_ID`
-   - `PUSHER_SECRET`
-   - `KV_REST_API_URL`
-   - `KV_REST_API_TOKEN`
-
-4. **Run the app**:
-   ```bash
-   npm run dev
+   npm run build
    ```
 
-5. **Play!**
-   - Open `http://localhost:3000` to host or join as a player.
-   - For Console Mode, join a room then visit `/console/[ROOM_ID]`.
+3. **Start the server**:
+   ```bash
+   node server.js
+   ```
 
 ## 🚢 Deployment
 
-The easiest way to deploy is using [Vercel](https://vercel.com/new).
-
-1. Connect your GitHub repository to Vercel.
-2. Link a **Vercel KV** storage in the "Storage" tab of your Vercel project.
-3. Add your **Pusher** credentials as Environment Variables in the project settings.
-4. Deploy!
+Simply run `docker-compose up -d` on any VPS with Docker installed. Ensure port `3000` is exposed.
 
 ## 📜 UNO Rules Implemented
 
-- **Matching**: Match the top card by color, number, or symbol.
-- **Action Cards**:
-  - **Skip**: Skips the next player's turn.
-  - **Reverse**: Flips the direction of play.
-  - **Draw Two**: Next player draws 2 and is skipped.
-- **Wild Cards**:
-  - **Wild**: Change the active color.
-  - **Wild Draw Four**: Change the color, next player draws 4 and is skipped.
-- **Winning**: First player to clear their hand wins!
+- **Matching**: Color, number, or symbol.
+- **Action Cards**: Skip, Reverse, Draw Two.
+- **Wild Cards**: Wild, Wild Draw Four.
+- **Winning**: Be the first to clear your hand.
 
 ---
 *Created for fun by [bizkut](https://github.com/bizkut).*

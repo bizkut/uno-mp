@@ -2,37 +2,32 @@
 
 import { useEffect, useState } from 'react';
 import { GameState, Color } from '@/lib/types';
-import { pusherClient } from '@/lib/pusher';
+import { getSocket } from '@/lib/socket';
 
 export default function ConsolePage({ params }: { params: { roomId: string } }) {
   const [state, setState] = useState<GameState | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchState = async () => {
-    try {
-      const res = await fetch(`/api/game/state?roomId=${params.roomId}`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setState(data);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchState();
+    const socket = getSocket();
 
-    const channel = pusherClient.subscribe(`presence-room-${params.roomId}`);
-    channel.bind('state-updated', (newState: GameState) => {
-        // Since this is public state, we can just use the broadcasted state
-        // but to be safe and consistent with player view, we fetch.
-        fetchState();
+    socket.emit('sync-state', { roomId: params.roomId });
+
+    socket.on('state-updated', (newState: GameState) => {
+        setState(newState);
+        setLoading(false);
     });
 
+    socket.on('re-sync', () => {
+        socket.emit('sync-state', { roomId: params.roomId });
+    });
+
+    socket.on('error', (msg) => alert(msg));
+
     return () => {
-      pusherClient.unsubscribe(`presence-room-${params.roomId}`);
+      socket.off('state-updated');
+      socket.off('re-sync');
+      socket.off('error');
     };
   }, [params.roomId]);
 

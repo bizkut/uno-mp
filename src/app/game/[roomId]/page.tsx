@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { GameState, Card, Player, Color } from '@/lib/types';
-import { pusherClient } from '@/lib/pusher';
+import { getSocket } from '@/lib/socket';
 import { canPlayCard } from '@/lib/game';
 
 export default function GamePage({ params }: { params: { roomId: string } }) {
@@ -20,47 +20,34 @@ export default function GamePage({ params }: { params: { roomId: string } }) {
   useEffect(() => {
     if (!playerId) return;
 
-    const fetchState = async () => {
-      try {
-        const res = await fetch(`/api/game/state?roomId=${params.roomId}&playerId=${playerId}`);
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-        setState(data);
-      } catch (error) {
-        console.error(error);
-      } finally {
-        setLoading(false);
-      }
-    };
+    const socket = getSocket();
 
-    fetchState();
+    socket.emit('sync-state', { roomId: params.roomId });
 
-    const channel = pusherClient.subscribe(`presence-room-${params.roomId}`);
-    channel.bind('state-updated', (newState: GameState) => {
-      // If we receive a state update, we re-fetch our full private state to see our cards
-      fetchState();
+    socket.on('state-updated', (newState: GameState) => {
+      setState(newState);
+      setLoading(false);
     });
 
+    socket.on('re-sync', () => {
+        socket.emit('sync-state', { roomId: params.roomId, playerId });
+    });
+
+    socket.on('error', (msg) => alert(msg));
+
     return () => {
-      pusherClient.unsubscribe(`presence-room-${params.roomId}`);
+      socket.off('state-updated');
+      socket.off('re-sync');
+      socket.off('error');
     };
   }, [params.roomId, playerId]);
 
-  const handleStartGame = async () => {
-    try {
-      const res = await fetch('/api/game/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId: params.roomId }),
-      });
-      const data = await res.json();
-      if (data.error) alert(data.error);
-    } catch (error) {
-      console.error(error);
-    }
+  const handleStartGame = () => {
+    const socket = getSocket();
+    socket.emit('start-game', { roomId: params.roomId, playerId });
   };
 
-  const handlePlayCard = async (cardId: string, chosenColor?: Color) => {
+  const handlePlayCard = (cardId: string, chosenColor?: Color) => {
     const card = me?.hand.find(c => c.id === cardId);
     if (!card) return;
 
@@ -70,34 +57,15 @@ export default function GamePage({ params }: { params: { roomId: string } }) {
     }
 
     setPlayingCardId(cardId);
-    try {
-      const res = await fetch('/api/game/play', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId: params.roomId, playerId, cardId, chosenColor }),
-      });
-      const data = await res.json();
-      if (data.error) alert(data.error);
-      setShowColorPicker(null);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setPlayingCardId(null);
-    }
+    const socket = getSocket();
+    socket.emit('play-card', { roomId: params.roomId, playerId, cardId, chosenColor });
+    setPlayingCardId(null);
+    setShowColorPicker(null);
   };
 
-  const handleDrawCard = async () => {
-    try {
-      const res = await fetch('/api/game/draw', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId: params.roomId, playerId }),
-      });
-      const data = await res.json();
-      if (data.error) alert(data.error);
-    } catch (error) {
-      console.error(error);
-    }
+  const handleDrawCard = () => {
+    const socket = getSocket();
+    socket.emit('draw-card', { roomId: params.roomId, playerId });
   };
 
   if (loading) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white">Loading...</div>;
@@ -169,13 +137,11 @@ export default function GamePage({ params }: { params: { roomId: string } }) {
             ROOM: {state.roomId}
         </div>
 
-        {/* Turn Indicator for Mobile Only */}
         <div className={`mb-8 px-6 py-2 rounded-full font-black text-sm uppercase tracking-widest border transition-all ${isMyTurn ? 'bg-red-600 border-red-500 shadow-xl shadow-red-900/40 animate-bounce' : 'bg-slate-800 border-white/5 opacity-50'}`}>
             {isMyTurn ? "IT'S YOUR TURN!" : `${state.players[state.currentPlayerIndex].name}'S TURN`}
         </div>
 
         <div className="flex items-center gap-8">
-            {/* Deck */}
             <button 
                 onClick={handleDrawCard}
                 disabled={!isMyTurn}
@@ -187,7 +153,6 @@ export default function GamePage({ params }: { params: { roomId: string } }) {
                 {isMyTurn && <div className="absolute -top-3 -right-3 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-xs font-black shadow-lg">DRAW</div>}
             </button>
 
-            {/* Discard Pile */}
             <div className="relative w-32 h-48">
                 {state.discardPile.slice(-3).map((card, idx) => (
                     <div 
@@ -203,8 +168,7 @@ export default function GamePage({ params }: { params: { roomId: string } }) {
                     </div>
                 ))}
                 
-                {/* Active Color Indicator when Wild */}
-                {state.discardPile[state.discardPile.length-1].color === 'Wild' && (
+                {state.discardPile.length > 0 && state.discardPile[state.discardPile.length-1].color === 'Wild' && (
                     <div className="absolute -top-4 -right-4 w-10 h-10 rounded-full border-4 border-slate-950 shadow-lg"
                          style={{ backgroundColor: state.currentColor.toLowerCase() }} />
                 )}
@@ -215,8 +179,8 @@ export default function GamePage({ params }: { params: { roomId: string } }) {
       {/* Hand Area */}
       <div className={`p-4 pb-10 bg-slate-900/80 backdrop-blur-xl border-t border-white/10 transition-all ${isMyTurn ? 'ring-2 ring-red-500/50' : ''}`}>
         <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xs font-black uppercase tracking-widest text-slate-500">Your Hand ({me?.hand.length})</h3>
-            {me?.hand.length === 2 && (
+            <h3 className="text-xs font-black uppercase tracking-widest text-slate-500">Your Hand ({me?.hand.length || 0})</h3>
+            {(me?.hand.length || 0) === 2 && (
                 <button className="bg-yellow-500 text-slate-950 text-[10px] font-black px-3 py-1 rounded-full animate-pulse">UNO!</button>
             )}
         </div>
@@ -242,7 +206,6 @@ export default function GamePage({ params }: { params: { roomId: string } }) {
         </div>
       </div>
 
-      {/* Color Picker Modal */}
       {showColorPicker && (
         <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-6 z-50">
             <div className="w-full max-w-xs bg-slate-800 rounded-3xl p-8 border border-white/10 text-center">
@@ -261,7 +224,6 @@ export default function GamePage({ params }: { params: { roomId: string } }) {
         </div>
       )}
 
-      {/* Win Modal */}
       {state.status === 'Finished' && (
           <div className="fixed inset-0 bg-red-600/95 flex flex-col items-center justify-center p-6 z-[100] animate-in fade-in zoom-in duration-300">
               <div className="text-8xl mb-4">🏆</div>

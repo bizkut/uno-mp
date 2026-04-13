@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { getSocket } from '@/lib/socket';
 
 export default function Home() {
   const [roomId, setRoomId] = useState('');
@@ -9,48 +10,42 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleCreateRoom = async () => {
+  useEffect(() => {
+    const socket = getSocket();
+
+    socket.on('room-created', ({ roomId }) => {
+        socket.emit('join-room', { roomId, playerName, isHost: true });
+    });
+
+    socket.on('joined', ({ roomId, playerId }) => {
+      router.push(`/game/${roomId}?playerId=${playerId}`);
+      setLoading(false);
+    });
+
+    socket.on('error', (msg) => {
+      alert(msg);
+      setLoading(false);
+    });
+
+    return () => {
+      socket.off('room-created');
+      socket.off('joined');
+      socket.off('error');
+    };
+  }, [router, playerName]);
+
+  const handleCreateRoom = () => {
     if (!playerName) return alert('Please enter your name');
     setLoading(true);
-    try {
-      const res = await fetch('/api/room/create', { method: 'POST' });
-      const { roomId } = await res.json();
-      
-      const joinRes = await fetch('/api/room/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId, playerName, isHost: true }),
-      });
-      const { playerId } = await joinRes.json();
-      
-      router.push(`/game/${roomId}?playerId=${playerId}`);
-    } catch (error) {
-      console.error(error);
-      alert('Failed to create room');
-    } finally {
-      setLoading(false);
-    }
+    const socket = getSocket();
+    socket.emit('create-room');
   };
 
   const handleJoinRoom = async () => {
     if (!playerName || !roomId) return alert('Please enter your name and room ID');
     setLoading(true);
-    try {
-      const res = await fetch('/api/room/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId: roomId.toUpperCase(), playerName }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      
-      router.push(`/game/${data.roomId}?playerId=${data.playerId}`);
-    } catch (error) {
-      console.error(error);
-      alert(error instanceof Error ? error.message : 'Failed to join room');
-    } finally {
-      setLoading(false);
-    }
+    const socket = getSocket();
+    socket.emit('join-room', { roomId: roomId.toUpperCase(), playerName });
   };
 
   const handleConsoleMode = () => {
